@@ -1,4 +1,4 @@
-export interface MovimentacaoDTO {
+export default interface MovimentacaoDTO {
   id_movimentacao: number;
   id_produto: number;
   id_movimentacao_origem?: number;
