@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import CategoriaController from "./controller/CategoriaController.js";
 import ProdutoController from "./controller/ProdutoController.js";
 import MovimentacaoController from "./controller/MovimentacaoController.js";
+import { UsuarioController } from "./controller/UsuarioController.js";
 import { Auth } from "./middlewares/Auth.js";
 
 const router = Router();
@@ -16,6 +17,10 @@ router.get('/', (req: Request, res: Response) => {
 
 // ==================== AUTHENTICATION ====================
 router.post('/api/login', Auth.validacaoUsuario);
+
+// ==================== USUÁRIOS ====================
+router.post('/api/usuarios/cadastrar', UsuarioController.cadastrar);       // Público — registro
+router.get('/api/usuarios', Auth.verifyToken, UsuarioController.todos);    // Protegido — listagem
 
 // ==================== DASHBOARD & RELATÓRIOS ====================
 router.get('/api/dashboard', ProdutoController.dashboard);

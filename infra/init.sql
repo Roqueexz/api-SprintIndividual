@@ -5,6 +5,21 @@ DROP VIEW IF EXISTS vw_produtos_reposicao;
 DROP TABLE IF EXISTS movimentacao;
 DROP TABLE IF EXISTS produto;
 DROP TABLE IF EXISTS categoria;
+DROP TABLE IF EXISTS usuario;
+
+
+CREATE TABLE usuario (
+    id_usuario  INTEGER GENERATED ALWAYS AS IDENTITY,
+    nome        VARCHAR(100) NOT NULL,
+    email       VARCHAR(150) NOT NULL,
+    senha       VARCHAR(255) NOT NULL,
+    role        VARCHAR(20)  NOT NULL DEFAULT 'OPERADOR',
+    data_cadastro TIMESTAMP  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT pk_usuario    PRIMARY KEY (id_usuario),
+    CONSTRAINT uq_usuario_email UNIQUE (email),
+    CONSTRAINT ck_usuario_role  CHECK (role IN ('ADMIN', 'OPERADOR'))
+);
 
 
 CREATE TABLE categoria (
@@ -284,6 +299,10 @@ SELECT
     ) AS valor_total_estoque
 FROM produto AS p;
 
+
+-- Seed: usuário administrador padrão
+INSERT INTO usuario (nome, email, senha, role)
+VALUES ('Administrador InfoTech', 'admin@infotech.com', 'admin123', 'ADMIN');
 
 INSERT INTO categoria (nome)
 VALUES
