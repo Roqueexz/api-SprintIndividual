@@ -82,15 +82,23 @@ class Produto {
     // ==================== MÉTODO PRIVADO: toDTO ====================
 
     private static toDTO(produto: any): ProdutoDTO {
+        const preco = typeof produto.preco_unitario === 'string' ? parseFloat(produto.preco_unitario) : Number(produto.preco_unitario || 0);
+        const qtd = Number(produto.quantidade_disponivel || 0);
+        const valorEstoque = produto.valor_em_estoque !== undefined
+            ? (typeof produto.valor_em_estoque === 'string' ? parseFloat(produto.valor_em_estoque) : Number(produto.valor_em_estoque))
+            : (preco * qtd);
+
         return {
             id_produto: produto.id_produto,
             id_categoria: produto.id_categoria,
+            categoria_nome: produto.categoria_nome,
             codigo: produto.codigo,
             nome: produto.nome,
             descricao: produto.descricao,
-            preco_unitario: produto.preco_unitario,
-            quantidade_disponivel: produto.quantidade_disponivel,
-            quantidade_minima: produto.quantidade_minima,
+            preco_unitario: preco,
+            quantidade_disponivel: qtd,
+            quantidade_minima: Number(produto.quantidade_minima || 0),
+            valor_em_estoque: valorEstoque,
             ativo: produto.ativo,
             data_cadastro: produto.data_cadastro
         };
@@ -150,10 +158,14 @@ class Produto {
     static async listarProdutos(): Promise<ProdutoDTO[]> {
         try {
             const query = `
-                SELECT *
-                FROM produto
-                WHERE ativo = TRUE
-                ORDER BY nome;
+                SELECT 
+                    p.*,
+                    c.nome AS categoria_nome,
+                    (p.quantidade_disponivel * p.preco_unitario) AS valor_em_estoque
+                FROM produto p
+                LEFT JOIN categoria c ON c.id_categoria = p.id_categoria
+                WHERE p.ativo = TRUE
+                ORDER BY p.nome;
             `;
 
             const respostaBD = await database.query(query);
@@ -172,9 +184,13 @@ class Produto {
     static async listarProduto(id_produto: number): Promise<ProdutoDTO> {
         try {
             const query = `
-                SELECT *
-                FROM produto
-                WHERE id_produto = $1;
+                SELECT 
+                    p.*,
+                    c.nome AS categoria_nome,
+                    (p.quantidade_disponivel * p.preco_unitario) AS valor_em_estoque
+                FROM produto p
+                LEFT JOIN categoria c ON c.id_categoria = p.id_categoria
+                WHERE p.id_produto = $1;
             `;
 
             const respostaBD = await database.query(query, [id_produto]);
@@ -190,6 +206,64 @@ class Produto {
         } catch (error) {
             console.error(
                 `[ProdutoModel] Erro ao buscar produto (id: ${id_produto}):`,
+                error
+            );
+            throw error;
+        }
+    }
+
+    static async listarProdutosReposicao(): Promise<ProdutoDTO[]> {
+        try {
+            const query = `
+                SELECT 
+                    p.*,
+                    c.nome AS categoria_nome,
+                    (p.quantidade_disponivel * p.preco_unitario) AS valor_em_estoque
+                FROM produto p
+                LEFT JOIN categoria c ON c.id_categoria = p.id_categoria
+                WHERE p.ativo = TRUE
+                    AND p.quantidade_disponivel <= p.quantidade_minima
+                ORDER BY p.nome;
+            `;
+
+            const respostaBD = await database.query(query);
+
+            return respostaBD.rows.map(Produto.toDTO);
+
+        } catch (error) {
+            console.error(
+                `[ProdutoModel] Erro ao listar produtos para reposição:`,
+                error
+            );
+            throw error;
+        }
+    }
+
+    static async obterMetricasDashboard(): Promise<any> {
+        try {
+            const query = `
+                SELECT 
+                    (SELECT COUNT(*)::int FROM produto WHERE ativo = TRUE) AS total_produtos,
+                    (SELECT COALESCE(SUM(quantidade_disponivel * preco_unitario), 0)::numeric(12,2) FROM produto WHERE ativo = TRUE) AS valor_total_estoque,
+                    (SELECT COUNT(*)::int FROM produto WHERE ativo = TRUE AND quantidade_disponivel <= quantidade_minima) AS produtos_reposicao,
+                    (SELECT COUNT(*)::int FROM movimentacao) AS total_movimentacoes,
+                    (SELECT COUNT(*)::int FROM categoria) AS total_categorias;
+            `;
+
+            const respostaBD = await database.query(query);
+            const row = respostaBD.rows[0] || {};
+
+            return {
+                total_produtos: Number(row.total_produtos || 0),
+                valor_total_estoque: parseFloat(row.valor_total_estoque || 0),
+                produtos_reposicao: Number(row.produtos_reposicao || 0),
+                total_movimentacoes: Number(row.total_movimentacoes || 0),
+                total_categorias: Number(row.total_categorias || 0)
+            };
+
+        } catch (error) {
+            console.error(
+                `[ProdutoModel] Erro ao obter métricas do dashboard:`,
                 error
             );
             throw error;

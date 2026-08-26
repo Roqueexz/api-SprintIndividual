@@ -3,6 +3,14 @@ import { DatabaseModel } from "./DatabaseModel.js";
 
 const database = new DatabaseModel().pool;
 
+export interface FiltroMovimentacao {
+    id_produto?: number;
+    tipo?: string;
+    motivo?: string;
+    data_inicio?: string;
+    data_fim?: string;
+}
+
 class Movimentacao {
 
     private id_movimentacao: number = 0;
@@ -14,6 +22,7 @@ class Movimentacao {
         | 'VENDA'
         | 'DANIFICADO'
         | 'USO_INTERNO'
+        | 'PERDA'
         | 'CORRECAO';
 
     private quantidade: number;
@@ -30,6 +39,7 @@ class Movimentacao {
             | 'VENDA'
             | 'DANIFICADO'
             | 'USO_INTERNO'
+            | 'PERDA'
             | 'CORRECAO',
         _quantidade: number,
         _observacao: string,
@@ -71,7 +81,7 @@ class Movimentacao {
     }
 
     public setIdMovimentacaoOrigem(
-        id_movimentacao_origem: number
+        id_movimentacao_origem: number | undefined
     ): void {
         this.id_movimentacao_origem = id_movimentacao_origem;
     }
@@ -89,6 +99,7 @@ class Movimentacao {
         | 'VENDA'
         | 'DANIFICADO'
         | 'USO_INTERNO'
+        | 'PERDA'
         | 'CORRECAO' {
         return this.motivo;
     }
@@ -99,6 +110,7 @@ class Movimentacao {
             | 'VENDA'
             | 'DANIFICADO'
             | 'USO_INTERNO'
+            | 'PERDA'
             | 'CORRECAO'
     ): void {
         this.motivo = motivo;
@@ -117,7 +129,7 @@ class Movimentacao {
     }
 
     public setPrecoUnitarioPraticado(
-        preco_unitario_praticado: number
+        preco_unitario_praticado: number | undefined
     ): void {
         this.preco_unitario_praticado = preco_unitario_praticado;
     }
@@ -126,7 +138,7 @@ class Movimentacao {
         return this.valor_total;
     }
 
-    public setValorTotal(valor_total: number): void {
+    public setValorTotal(valor_total: number | undefined): void {
         this.valor_total = valor_total;
     }
 
@@ -151,18 +163,25 @@ class Movimentacao {
     private static toDTO(
         movimentacao: any
     ): MovimentacaoDTO {
+        const preco = movimentacao.preco_unitario_praticado !== null && movimentacao.preco_unitario_praticado !== undefined
+            ? (typeof movimentacao.preco_unitario_praticado === 'string' ? parseFloat(movimentacao.preco_unitario_praticado) : Number(movimentacao.preco_unitario_praticado))
+            : undefined;
+
+        const total = movimentacao.valor_total !== null && movimentacao.valor_total !== undefined
+            ? (typeof movimentacao.valor_total === 'string' ? parseFloat(movimentacao.valor_total) : Number(movimentacao.valor_total))
+            : undefined;
 
         return {
-            id_movimentacao: movimentacao.id_movimentacao,
-            id_produto: movimentacao.id_produto,
-            id_movimentacao_origem:
-                movimentacao.id_movimentacao_origem,
+            id_movimentacao: Number(movimentacao.id_movimentacao),
+            id_produto: Number(movimentacao.id_produto),
+            produto_codigo: movimentacao.produto_codigo,
+            produto_nome: movimentacao.produto_nome,
+            id_movimentacao_origem: movimentacao.id_movimentacao_origem ? Number(movimentacao.id_movimentacao_origem) : undefined,
             tipo: movimentacao.tipo,
             motivo: movimentacao.motivo,
-            quantidade: movimentacao.quantidade,
-            preco_unitario_praticado:
-                movimentacao.preco_unitario_praticado,
-            valor_total: movimentacao.valor_total,
+            quantidade: Number(movimentacao.quantidade),
+            preco_unitario_praticado: preco,
+            valor_total: total,
             observacao: movimentacao.observacao,
             data_movimentacao: movimentacao.data_movimentacao
         };
@@ -232,17 +251,59 @@ class Movimentacao {
 
     // ==================== READ ====================
 
-    static async listarMovimentacoes(): Promise<MovimentacaoDTO[]> {
+    static async listarMovimentacoes(filtros?: FiltroMovimentacao): Promise<MovimentacaoDTO[]> {
 
         try {
-
-            const query = `
-                SELECT *
-                FROM movimentacao
-                ORDER BY data_movimentacao DESC;
+            let query = `
+                SELECT 
+                    m.id_movimentacao,
+                    m.id_produto,
+                    m.id_movimentacao_origem,
+                    m.tipo,
+                    m.motivo,
+                    m.quantidade,
+                    m.preco_unitario_praticado,
+                    m.valor_total,
+                    m.observacao,
+                    m.data_movimentacao,
+                    p.codigo AS produto_codigo,
+                    p.nome AS produto_nome
+                FROM movimentacao m
+                INNER JOIN produto p ON p.id_produto = m.id_produto
+                WHERE 1=1
             `;
 
-            const respostaBD = await database.query(query);
+            const valores: any[] = [];
+            let index = 1;
+
+            if (filtros?.id_produto) {
+                query += ` AND m.id_produto = $${index++}`;
+                valores.push(filtros.id_produto);
+            }
+
+            if (filtros?.tipo) {
+                query += ` AND m.tipo = $${index++}`;
+                valores.push(filtros.tipo);
+            }
+
+            if (filtros?.motivo) {
+                query += ` AND m.motivo = $${index++}`;
+                valores.push(filtros.motivo);
+            }
+
+            if (filtros?.data_inicio) {
+                query += ` AND m.data_movimentacao >= $${index++}`;
+                valores.push(filtros.data_inicio);
+            }
+
+            if (filtros?.data_fim) {
+                query += ` AND m.data_movimentacao <= $${index++}`;
+                valores.push(`${filtros.data_fim} 23:59:59`);
+            }
+
+            query += ` ORDER BY m.data_movimentacao DESC;`;
+
+            const respostaBD = await database.query(query, valores);
 
             return respostaBD.rows.map(
                 Movimentacao.toDTO
@@ -266,9 +327,22 @@ class Movimentacao {
         try {
 
             const query = `
-                SELECT *
-                FROM movimentacao
-                WHERE id_movimentacao = $1;
+                SELECT 
+                    m.id_movimentacao,
+                    m.id_produto,
+                    m.id_movimentacao_origem,
+                    m.tipo,
+                    m.motivo,
+                    m.quantidade,
+                    m.preco_unitario_praticado,
+                    m.valor_total,
+                    m.observacao,
+                    m.data_movimentacao,
+                    p.codigo AS produto_codigo,
+                    p.nome AS produto_nome
+                FROM movimentacao m
+                INNER JOIN produto p ON p.id_produto = m.id_produto
+                WHERE m.id_movimentacao = $1;
             `;
 
             const respostaBD = await database.query(
