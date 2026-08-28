@@ -7,7 +7,6 @@ import { DatabaseModel } from '../model/DatabaseModel.js';
 const SECRET = 'SistemaInformatica@2026';
 // pool de conexão ao banco de dados
 const database = new DatabaseModel().pool;
-
 /**
  * Interface para representar um Payload do JWT
  * (Não obrigatório, mas recomendado)
