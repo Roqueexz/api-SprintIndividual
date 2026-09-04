@@ -299,6 +299,63 @@ class CategoriaController extends Categoria {
             });
         }
     }
+
+    /**
+     * Atualiza parcialmente os dados de uma categoria (PATCH).
+     */
+    static async atualizarParcial(req: Request, res: Response) {
+        try {
+            const idCategoria = parseInt(req.params.id as string);
+
+            if (isNaN(idCategoria) || idCategoria <= 0) {
+                res.status(400).json({
+                    mensagem: "ID inválido. Informe um número inteiro positivo."
+                });
+                return;
+            }
+
+            const dadosRecebidos: Partial<CategoriaDTO> = req.body;
+
+            if (dadosRecebidos.nome !== undefined && !dadosRecebidos.nome.trim()) {
+                res.status(400).json({
+                    mensagem: "O nome da categoria não pode ser vazio."
+                });
+                return;
+            }
+
+            const result = await Categoria.atualizarParcialCategoria(
+                idCategoria,
+                dadosRecebidos
+            );
+
+            if (result) {
+                res.status(200).json({
+                    mensagem: "Categoria atualizada com sucesso."
+                });
+            } else {
+                res.status(404).json({
+                    mensagem: "Categoria não encontrada."
+                });
+            }
+
+        } catch (error: any) {
+            console.error(
+                `[CategoriaController] Erro ao atualizar parcialmente categoria (id: ${req.params.id}):`,
+                error
+            );
+
+            if (error.message?.includes("não encontrada")) {
+                res.status(404).json({
+                    mensagem: error.message
+                });
+                return;
+            }
+
+            res.status(500).json({
+                mensagem: "Erro interno ao atualizar parcialmente a categoria."
+            });
+        }
+    }
 }
 
 // Exporta o controller para ser utilizado no arquivo de rotas

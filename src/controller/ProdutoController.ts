@@ -9,7 +9,8 @@ class ProdutoController extends Produto {
      */
     static async todos(req: Request, res: Response) {
         try {
-            const listaDeProdutos = await Produto.listarProdutos();
+            const incluirInativos = req.query.inativos === 'true' || req.query.incluirInativos === 'true';
+            const listaDeProdutos = await Produto.listarProdutos(incluirInativos);
 
             if (listaDeProdutos.length === 0) {
                 res.status(204).send();
@@ -171,7 +172,7 @@ class ProdutoController extends Produto {
     }
 
     /**
-     * Remove logicamente um produto do sistema pelo ID informado na URL.
+     * Remove logicamente ou definitivamente um produto do sistema pelo ID informado na URL.
      */
     static async remover(req: Request, res: Response) {
         try {
@@ -186,13 +187,17 @@ class ProdutoController extends Produto {
 
             const result = await Produto.removerProduto(idProduto);
 
-            if (result) {
+            if (result.removido) {
+                const msg = result.tipo === 'desativado'
+                    ? "Produto desativado com sucesso (mantido no histórico pois possui movimentações vinculadas)."
+                    : "Produto excluído com sucesso.";
                 res.status(200).json({
-                    mensagem: "Produto desativado com sucesso."
+                    mensagem: msg,
+                    tipo: result.tipo
                 });
             } else {
                 res.status(404).json({
-                    mensagem: "Produto não encontrado ou já está inativo."
+                    mensagem: "Produto não encontrado."
                 });
             }
 
@@ -290,6 +295,107 @@ class ProdutoController extends Produto {
 
             res.status(500).json({
                 mensagem: "Erro interno ao atualizar o produto."
+            });
+        }
+    }
+
+    /**
+     * Atualiza parcialmente um produto existente (PATCH).
+     */
+    static async atualizarParcial(req: Request, res: Response) {
+        try {
+            const idProduto = parseInt(req.params.id as string);
+
+            if (isNaN(idProduto) || idProduto <= 0) {
+                res.status(400).json({
+                    mensagem: "ID inválido. Informe um número inteiro positivo."
+                });
+                return;
+            }
+
+            const dadosRecebidos: Partial<ProdutoDTO> = req.body;
+
+            const result = await Produto.atualizarParcialProduto(idProduto, dadosRecebidos);
+
+            if (result) {
+                res.status(200).json({
+                    mensagem: "Produto atualizado com sucesso."
+                });
+            } else {
+                res.status(404).json({
+                    mensagem: "Produto não encontrado."
+                });
+            }
+
+        } catch (error: any) {
+            console.error(
+                `[ProdutoController] Erro ao atualizar parcialmente produto (id: ${req.params.id}):`,
+                error
+            );
+
+            if (error.code === '23505' || error.message?.includes('duplicate key')) {
+                res.status(400).json({
+                    mensagem: "Já existe um produto cadastrado com este código."
+                });
+                return;
+            }
+
+            if (error.message?.includes("não encontrado")) {
+                res.status(404).json({
+                    mensagem: error.message
+                });
+                return;
+            }
+
+            res.status(500).json({
+                mensagem: "Erro interno ao atualizar o produto."
+            });
+        }
+    }
+
+    /**
+     * Alterna o status ativo/inativo de um produto (PATCH /status).
+     */
+    static async alternarStatus(req: Request, res: Response) {
+        try {
+            const idProduto = parseInt(req.params.id as string);
+
+            if (isNaN(idProduto) || idProduto <= 0) {
+                res.status(400).json({
+                    mensagem: "ID inválido. Informe um número inteiro positivo."
+                });
+                return;
+            }
+
+            const { ativo } = req.body;
+
+            if (typeof ativo !== 'boolean') {
+                res.status(400).json({
+                    mensagem: "Campo 'ativo' deve ser um booleano (true ou false)."
+                });
+                return;
+            }
+
+            const result = await Produto.atualizarParcialProduto(idProduto, { ativo });
+
+            if (result) {
+                res.status(200).json({
+                    mensagem: ativo ? "Produto ativado com sucesso." : "Produto desativado com sucesso.",
+                    ativo
+                });
+            } else {
+                res.status(404).json({
+                    mensagem: "Produto não encontrado."
+                });
+            }
+
+        } catch (error: any) {
+            console.error(
+                `[ProdutoController] Erro ao alterar status do produto (id: ${req.params.id}):`,
+                error
+            );
+            res.status(500).json({
+                mensagem: "Erro interno ao alterar status do produto."
             });
         }
     }

@@ -202,6 +202,52 @@ class Categoria {
         }
     }
 
+    // ==================== PATCH ====================
+
+    static async atualizarParcialCategoria(
+        id_categoria: number,
+        dados: Partial<CategoriaDTO>
+    ): Promise<boolean> {
+
+        try {
+
+            // Verifica se a categoria existe
+            await Categoria.listarCategoria(id_categoria);
+
+            const campos: string[] = [];
+            const valores: any[] = [];
+            let index = 1;
+
+            if (dados.nome !== undefined) {
+                campos.push(`nome = $${index++}`);
+                valores.push(dados.nome);
+            }
+
+            if (campos.length === 0) {
+                return true;
+            }
+
+            valores.push(id_categoria);
+            const query = `
+                UPDATE categoria
+                SET ${campos.join(', ')}
+                WHERE id_categoria = $${index};
+            `;
+
+            const respostaBD = await database.query(query, valores);
+            return (respostaBD.rowCount ?? 0) > 0;
+
+        } catch (error) {
+
+            console.error(
+                `[CategoriaModel] Erro ao atualizar parcialmente categoria (id: ${id_categoria}):`,
+                error
+            );
+
+            throw error;
+        }
+    }
+
     // ==================== DELETE ====================
 
     static async removerCategoria(

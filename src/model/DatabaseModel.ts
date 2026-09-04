@@ -1,3 +1,4 @@
+import "../config/env.js";
 import pg from 'pg';
 
 /**
@@ -29,8 +30,8 @@ export class DatabaseModel {
             user: process.env.DB_USER,
             host: process.env.DB_HOST,
             database: process.env.DB_NAME,
-            password: process.env.DB_PASSWORD,
-            port: process.env.DB_PORT,
+            password: String(process.env.DB_PASSWORD ?? ''),
+            port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 5432,
             max: 10,
             idleTimoutMillis: 10000
         }

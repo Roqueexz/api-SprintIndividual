@@ -1,3 +1,4 @@
+import "./config/env.js";
 // Importa o framework Express — é ele quem cria e gerencia o servidor web da aplicação
 import express from "express";
 
@@ -32,7 +33,7 @@ server.use(express.json({ limit: "10mb" }));
 //   - DELETE: remoção de recursos
 server.use(cors({
     origin: process.env.CORS_ORIGIN ?? "*",
-    methods: ["GET", "POST", "PUT", "DELETE"]
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 }));
 
 // Registra o router com todos os endpoints da aplicação

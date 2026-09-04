@@ -194,6 +194,107 @@ class MovimentacaoController extends Movimentacao {
             });
         }
     }
+
+    /**
+     * Retifica a observação de uma movimentação confirmada (PATCH /api/movimentacoes/:id).
+     */
+    static async atualizarParcial(req: Request, res: Response) {
+        try {
+            const idMovimentacao = parseInt(req.params.id as string);
+
+            if (isNaN(idMovimentacao) || idMovimentacao <= 0) {
+                res.status(400).json({
+                    mensagem: "ID inválido. Informe um número inteiro positivo."
+                });
+                return;
+            }
+
+            const { observacao } = req.body;
+
+            if (!observacao || typeof observacao !== 'string' || !observacao.trim()) {
+                res.status(400).json({
+                    mensagem: "Informe a observação para retificação da movimentação."
+                });
+                return;
+            }
+
+            const result = await Movimentacao.atualizarObservacao(idMovimentacao, observacao.trim());
+
+            if (result) {
+                res.status(200).json({
+                    mensagem: "Observação da movimentação atualizada com sucesso."
+                });
+            } else {
+                res.status(404).json({
+                    mensagem: "Movimentação não encontrada."
+                });
+            }
+
+        } catch (error: any) {
+            console.error(
+                `[MovimentacaoController] Erro ao retificar observação (id: ${req.params.id}):`,
+                error
+            );
+
+            if (error.message?.includes("não encontrada")) {
+                res.status(404).json({ mensagem: error.message });
+                return;
+            }
+
+            res.status(500).json({
+                mensagem: "Erro interno ao atualizar observação da movimentação."
+            });
+        }
+    }
+
+    /**
+     * Anula/Estorna uma movimentação confirmada (DELETE /api/movimentacoes/:id).
+     * Conforme as regras de negócio RN07 e RN08, movimentações confirmadas não podem ser
+     * excluídas fisicamente. Este endpoint registra uma movimentação de CORREÇÃO
+     * invertendo a quantidade e restaurando o saldo do estoque com rastreabilidade total.
+     */
+    static async remover(req: Request, res: Response) {
+        try {
+            const idMovimentacao = parseInt(req.params.id as string);
+
+            if (isNaN(idMovimentacao) || idMovimentacao <= 0) {
+                res.status(400).json({
+                    mensagem: "ID inválido. Informe um número inteiro positivo."
+                });
+                return;
+            }
+
+            const { motivo } = req.body || {};
+            const correcao = await Movimentacao.estornarMovimentacao(idMovimentacao, motivo);
+
+            res.status(200).json({
+                mensagem: `Movimentação #${idMovimentacao} estornada com sucesso! Uma movimentação de correção (#${correcao.id_movimentacao}) foi registrada para reverter o saldo do produto.`,
+                movimentacao_correcao: correcao
+            });
+
+        } catch (error: any) {
+            console.error(
+                `[MovimentacaoController] Erro ao estornar movimentação (id: ${req.params.id}):`,
+                error
+            );
+
+            const msg = error.message || "";
+
+            if (msg.includes("já foi estornada") || msg.includes("Estoque insuficiente")) {
+                res.status(400).json({ mensagem: msg });
+                return;
+            }
+
+            if (msg.includes("não encontrada")) {
+                res.status(404).json({ mensagem: msg });
+                return;
+            }
+
+            res.status(500).json({
+                mensagem: "Erro interno ao estornar a movimentação."
+            });
+        }
+    }
 }
 
 export default MovimentacaoController;

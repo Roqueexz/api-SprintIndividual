@@ -370,6 +370,88 @@ class Movimentacao {
             throw error;
         }
     }
+
+    // ==================== PATCH ====================
+
+    static async atualizarObservacao(
+        id_movimentacao: number,
+        observacao: string
+    ): Promise<boolean> {
+        try {
+            await Movimentacao.listarMovimentacao(id_movimentacao);
+
+            const query = `
+                UPDATE movimentacao
+                SET observacao = $1
+                WHERE id_movimentacao = $2;
+            `;
+
+            const respostaBD = await database.query(query, [observacao, id_movimentacao]);
+            return (respostaBD.rowCount ?? 0) > 0;
+        } catch (error) {
+            console.error(
+                `[MovimentacaoModel] Erro ao retificar observação da movimentação (id: ${id_movimentacao}):`,
+                error
+            );
+            throw error;
+        }
+    }
+
+    // ==================== DELETE (ESTORNO / CORREÇÃO AUTOMÁTICA) ====================
+
+    static async estornarMovimentacao(
+        id_movimentacao: number,
+        motivo_estorno?: string
+    ): Promise<MovimentacaoDTO> {
+        try {
+            const original = await Movimentacao.listarMovimentacao(id_movimentacao);
+
+            // Verifica se esta movimentação já foi estornada anteriormente
+            const checkJaEstornada = await database.query(
+                `SELECT id_movimentacao FROM movimentacao WHERE id_movimentacao_origem = $1 AND motivo = 'CORRECAO'`,
+                [id_movimentacao]
+            );
+
+            if (checkJaEstornada.rowCount && checkJaEstornada.rowCount > 0) {
+                throw new Error(`A movimentação #${id_movimentacao} já foi estornada anteriormente pela movimentação de correção #${checkJaEstornada.rows[0].id_movimentacao}.`);
+            }
+
+            // Inverte o tipo para desfazer o impacto no estoque
+            const tipoInverso: 'ENTRADA' | 'SAIDA' = original.tipo === 'ENTRADA' ? 'SAIDA' : 'ENTRADA';
+            const obsEstorno = motivo_estorno 
+                ? `Estorno da movimentação #${id_movimentacao}: ${motivo_estorno}`
+                : `Estorno/Anulação da movimentação #${id_movimentacao} (${original.tipo} - ${original.motivo})`;
+
+            const query = `
+                INSERT INTO movimentacao (
+                    id_produto,
+                    id_movimentacao_origem,
+                    tipo,
+                    motivo,
+                    quantidade,
+                    observacao
+                )
+                VALUES ($1, $2, $3, 'CORRECAO', $4, $5)
+                RETURNING *;
+            `;
+
+            const respostaBD = await database.query(query, [
+                original.id_produto,
+                id_movimentacao,
+                tipoInverso,
+                original.quantidade,
+                obsEstorno
+            ]);
+
+            return Movimentacao.toDTO(respostaBD.rows[0]);
+        } catch (error) {
+            console.error(
+                `[MovimentacaoModel] Erro ao estornar movimentação (id: ${id_movimentacao}):`,
+                error
+            );
+            throw error;
+        }
+    }
 }
 
 export default Movimentacao;

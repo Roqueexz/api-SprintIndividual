@@ -245,12 +245,27 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    -- Qualquer tentativa de UPDATE ou DELETE será interrompida.
-    RAISE EXCEPTION
-        'Uma movimentação confirmada não pode ser alterada ou excluída. Registre uma correção.';
+    IF TG_OP = 'UPDATE' THEN
+        -- Permite apenas a retificação da observação textual
+        IF NEW.id_movimentacao = OLD.id_movimentacao
+           AND NEW.id_produto = OLD.id_produto
+           AND NEW.tipo = OLD.tipo
+           AND NEW.motivo = OLD.motivo
+           AND NEW.quantidade = OLD.quantidade
+           AND (NEW.preco_unitario_praticado = OLD.preco_unitario_praticado OR (NEW.preco_unitario_praticado IS NULL AND OLD.preco_unitario_praticado IS NULL))
+           AND (NEW.valor_total = OLD.valor_total OR (NEW.valor_total IS NULL AND OLD.valor_total IS NULL))
+           AND (NEW.id_movimentacao_origem = OLD.id_movimentacao_origem OR (NEW.id_movimentacao_origem IS NULL AND OLD.id_movimentacao_origem IS NULL))
+        THEN
+            RETURN NEW;
+        ELSE
+            RAISE EXCEPTION 'Os dados quantitativos ou financeiros de uma movimentação confirmada não podem ser alterados diretamente. Registre uma correção.';
+        END IF;
+    END IF;
+
+    -- Qualquer tentativa direta de DELETE no banco será interrompida
+    RAISE EXCEPTION 'Uma movimentação confirmada não pode ser excluída fisicamente do histórico. Registre uma movimentação de correção.';
 END;
 $$;
-
 
 CREATE TRIGGER tg_proteger_movimentacao
 BEFORE UPDATE OR DELETE ON movimentacao

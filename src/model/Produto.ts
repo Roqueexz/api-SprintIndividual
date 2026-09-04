@@ -155,18 +155,22 @@ class Produto {
 
     // ==================== READ ====================
 
-    static async listarProdutos(): Promise<ProdutoDTO[]> {
+    static async listarProdutos(incluirInativos: boolean = false): Promise<ProdutoDTO[]> {
         try {
-            const query = `
+            let query = `
                 SELECT 
                     p.*,
                     c.nome AS categoria_nome,
                     (p.quantidade_disponivel * p.preco_unitario) AS valor_em_estoque
                 FROM produto p
                 LEFT JOIN categoria c ON c.id_categoria = p.id_categoria
-                WHERE p.ativo = TRUE
-                ORDER BY p.nome;
             `;
+
+            if (!incluirInativos) {
+                query += ` WHERE p.ativo = TRUE`;
+            }
+
+            query += ` ORDER BY p.nome;`;
 
             const respostaBD = await database.query(query);
 
@@ -317,28 +321,98 @@ class Produto {
         }
     }
 
-    // ==================== DELETE LÓGICO ====================
+    // ==================== PATCH ====================
 
-    static async removerProduto(id_produto: number): Promise<boolean> {
+    static async atualizarParcialProduto(
+        id_produto: number,
+        dados: Partial<ProdutoDTO>
+    ): Promise<boolean> {
         try {
-            const produtoConsulta = await Produto.listarProduto(id_produto);
+            await Produto.listarProduto(id_produto);
 
-            if (!produtoConsulta.ativo) {
-                return false;
+            const campos: string[] = [];
+            const valores: any[] = [];
+            let index = 1;
+
+            if (dados.id_categoria !== undefined) {
+                campos.push(`id_categoria = $${index++}`);
+                valores.push(dados.id_categoria);
+            }
+            if (dados.codigo !== undefined) {
+                campos.push(`codigo = $${index++}`);
+                valores.push(dados.codigo.toUpperCase());
+            }
+            if (dados.nome !== undefined) {
+                campos.push(`nome = $${index++}`);
+                valores.push(dados.nome.toUpperCase());
+            }
+            if (dados.descricao !== undefined) {
+                campos.push(`descricao = $${index++}`);
+                valores.push(dados.descricao);
+            }
+            if (dados.preco_unitario !== undefined) {
+                campos.push(`preco_unitario = $${index++}`);
+                valores.push(dados.preco_unitario);
+            }
+            if (dados.quantidade_minima !== undefined) {
+                campos.push(`quantidade_minima = $${index++}`);
+                valores.push(dados.quantidade_minima);
+            }
+            if (dados.ativo !== undefined) {
+                campos.push(`ativo = $${index++}`);
+                valores.push(dados.ativo);
             }
 
+            if (campos.length === 0) {
+                return true;
+            }
+
+            valores.push(id_produto);
             const query = `
                 UPDATE produto
-                SET ativo = FALSE
-                WHERE id_produto = $1;
+                SET ${campos.join(', ')}
+                WHERE id_produto = $${index};
             `;
 
-            const respostaBD = await database.query(
-                query,
+            const respostaBD = await database.query(query, valores);
+            return (respostaBD.rowCount ?? 0) > 0;
+        } catch (error) {
+            console.error(
+                `[ProdutoModel] Erro ao atualizar parcialmente produto (id: ${id_produto}):`,
+                error
+            );
+            throw error;
+        }
+    }
+
+    // ==================== DELETE (LÓGICO OU DEFINITIVO) ====================
+
+    static async removerProduto(id_produto: number): Promise<{ removido: boolean; tipo: 'desativado' | 'excluido' }> {
+        try {
+            await Produto.listarProduto(id_produto);
+
+            // Verifica se o produto possui movimentações registradas
+            const checkMovs = await database.query(
+                `SELECT COUNT(*)::int as total FROM movimentacao WHERE id_produto = $1`,
                 [id_produto]
             );
+            const totalMovs = Number(checkMovs.rows[0]?.total || 0);
 
-            return (respostaBD.rowCount ?? 0) > 0;
+            if (totalMovs > 0) {
+                // RF015: Produtos com movimentações não podem ser excluídos e sim desativados (soft delete)
+                const query = `
+                    UPDATE produto
+                    SET ativo = FALSE
+                    WHERE id_produto = $1;
+                `;
+                const respostaBD = await database.query(query, [id_produto]);
+                return { removido: (respostaBD.rowCount ?? 0) > 0, tipo: 'desativado' };
+            } else {
+                // Produto sem movimentações pode ser excluído definitivamente
+                const query = `DELETE FROM produto WHERE id_produto = $1;`;
+                const respostaBD = await database.query(query, [id_produto]);
+                return { removido: (respostaBD.rowCount ?? 0) > 0, tipo: 'excluido' };
+            }
 
         } catch (error) {
             console.error(
